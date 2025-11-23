@@ -17,3 +17,4 @@ local.properties
 
 /.tauri
 /tauri.settings.gradle
+/roomos-release.apk

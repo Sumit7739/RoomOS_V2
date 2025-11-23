@@ -1,6 +1,8 @@
 import { renderLogin } from './ui/login.js';
+import { apiCall } from './api.js';
+// import { renderForgotPassword } from './ui/forgot_password.js';
 import { renderGroupSetup } from './ui/group_setup.js';
-import { renderDashboard } from './ui/dashboard.js';
+import { renderDashboard, stopDashboardUpdates } from './ui/dashboard.js';
 import { renderRoster } from './ui/roster.js';
 import { renderCrew } from './ui/crew.js';
 import { renderRules } from './ui/rules.js';
@@ -19,20 +21,7 @@ window.app = {
     toggleTheme: toggleTheme,
     showToast: showToast,
     toggleChat: toggleChat,
-    checkForUpdates: checkForUpdates, // For manual testing
-    sendNotification: (title, body) => {
-        import('./tauri_integration.js').then(tauri => tauri.sendAppNotification(title, body)).catch(() => { });
-    },
-    clearTauriStore: () => {
-        import('./tauri_integration.js').then(tauri => {
-            tauri.clearStore();
-            localStorage.clear();
-            console.log('🧹 Cleared both Tauri Store and localStorage. Reload the page.');
-        }).catch(() => {
-            localStorage.clear();
-            console.log('🧹 Cleared localStorage (browser mode). Reload the page.');
-        });
-    }
+    checkForUpdates: checkForUpdates // For manual testing
 };
 
 // Toggle Chat Function
@@ -59,7 +48,7 @@ export function navigate(view) {
     container.innerHTML = '';
 
     // Handle Auth Guard
-    if (!localStorage.getItem('token') && view !== 'login') {
+    if (!localStorage.getItem('token') && !['login', 'forgot-password'].includes(view)) {
         view = 'login';
     }
 
@@ -67,7 +56,7 @@ export function navigate(view) {
     console.log('Current State:', state);
 
     // Auth Guard
-    if (!state.token && view !== 'login') {
+    if (!state.token && !['login', 'forgot-password'].includes(view)) {
         console.log('Auth Guard Blocked');
         renderLogin();
         return;
@@ -102,8 +91,8 @@ export function navigate(view) {
 
     // Hide/Show bottom nav and chat button based on view
     const chatBtn = document.getElementById('chat-btn');
-    const shouldHideNav = ['chat', 'login', 'group_setup'].includes(view);
-    const shouldHideChat = ['login', 'group_setup'].includes(view);
+    const shouldHideNav = ['chat', 'login', 'group_setup', 'forgot-password'].includes(view);
+    const shouldHideChat = ['login', 'group_setup', 'forgot-password'].includes(view);
 
     if (bottomNav) {
         bottomNav.style.display = shouldHideNav ? 'none' : 'flex';
@@ -118,9 +107,12 @@ export function navigate(view) {
         el.classList.toggle('active', el.dataset.target === view);
     });
 
-    // Stop Chat Polling if leaving chat
+    // Stop polling/intervals when leaving views
     if (view !== 'chat') {
         stopChatPolling();
+    }
+    if (view !== 'dashboard') {
+        stopDashboardUpdates();
     }
 
     // Clear current view
@@ -130,6 +122,9 @@ export function navigate(view) {
     switch (view) {
         case 'login':
             renderLogin();
+            break;
+        case 'forgot-password':
+            renderForgotPassword();
             break;
         case 'group_setup':
             renderGroupSetup();
@@ -194,60 +189,26 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelector('#theme-toggle i').className = savedTheme === 'dark' ? 'ph ph-moon' : 'ph ph-sun';
     }
 
-    // Initialize Tauri Integration and restore session
-    const initializeApp = async () => {
-        console.log('🚀 Starting app initialization...');
+    const state = getState();
 
-        try {
-            const tauri = await import('./tauri_integration.js');
-            console.log('✅ Tauri module loaded');
-
-            // Sync state from Tauri Store if LocalStorage is empty (persistent login)
-            const storedToken = await tauri.getFromStore('token');
-            const storedUser = await tauri.getFromStore('user');
-            const storedGroup = await tauri.getFromStore('group');
-
-            console.log('📦 Tauri Store check:', {
-                hasStoredToken: !!storedToken,
-                hasLocalToken: !!localStorage.getItem('token'),
-                storedUser: storedUser ? storedUser.email : 'none',
-                storedGroup: storedGroup ? storedGroup.id : 'none'
-            });
-
-            if (storedToken && !localStorage.getItem('token')) {
-                console.log('🔄 Restoring session from Tauri Store');
-                updateState('token', storedToken);
-                if (storedUser) updateState('user', storedUser);
-                if (storedGroup) updateState('group', storedGroup);
-            }
-        } catch (e) {
-            console.log('Running in browser mode (no Tauri):', e.message);
-        }
-
-        // Now perform initial routing after Tauri check is complete
-        const state = getState();
-        console.log('🔍 Current state:', {
-            hasToken: !!state.token,
-            hasUser: !!state.user,
-            hasGroup: !!state.group
-        });
-
-        if (state.token) {
-            const lastView = localStorage.getItem('last_view');
-            console.log('✅ User authenticated, navigating to:', lastView || 'dashboard');
-            if (lastView && lastView !== 'login' && lastView !== 'group_setup') {
-                navigate(lastView);
-            } else {
-                navigate('dashboard');
-            }
-        } else {
-            console.log('❌ No authentication found, navigating to login');
-            navigate('login');
-        }
-    };
-
-    // Start app initialization
-    initializeApp();
+    // Initial Route
+    if (state.token) {
+        // Verify token is valid before proceeding. If not, force login.
+        // A simple way is to try to fetch something that requires auth, like the user's schedule.
+        // If it fails with a 401, we know the token is bad.
+        apiCall('/schedule/get', 'GET', null, state.token)
+            .then(() => {
+                const lastView = localStorage.getItem('last_view');
+                if (lastView && lastView !== 'login' && lastView !== 'group_setup') {
+                    navigate(lastView);
+                } else {
+                    navigate('dashboard');
+                }
+            })
+            .catch(() => navigate('login')); // If the check fails, go to login
+    } else {
+        navigate('login');
+    }
 
     // Register Service Worker
     if ('serviceWorker' in navigator) {
