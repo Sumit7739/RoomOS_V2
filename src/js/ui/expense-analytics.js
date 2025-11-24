@@ -11,17 +11,18 @@ export async function renderExpenseAnalytics() {
             apiCall('/transactions/list', 'GET', null, token),
             apiCall('/group/members', 'GET', null, token)
         ]);
-        
+
         const transactions = transRes.transactions;
         const members = membersRes.members;
-        const currentUser = getState().user;
-        
+        const state = await getState();
+        const currentUser = state.user;
+
         // Filter transactions where current user is in the split_between array
         const myTransactions = transactions.filter(t => {
             const splitBetween = t.split_between ? JSON.parse(t.split_between) : [];
             return splitBetween.includes(currentUser.id);
         });
-        
+
         // Calculate total expenses (user's share only)
         let totalExpenses = 0;
         myTransactions.forEach(t => {
@@ -29,14 +30,14 @@ export async function renderExpenseAnalytics() {
             const myShare = splitBetween.length > 0 ? parseFloat(t.amount) / splitBetween.length : 0;
             totalExpenses += myShare;
         });
-        
+
         // Group transactions by month
         const monthlyData = {};
         myTransactions.forEach(t => {
             const date = new Date(t.created_at);
             const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
             const monthName = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
-            
+
             if (!monthlyData[monthKey]) {
                 monthlyData[monthKey] = {
                     name: monthName,
@@ -44,16 +45,16 @@ export async function renderExpenseAnalytics() {
                     transactions: []
                 };
             }
-            
+
             const splitBetween = t.split_between ? JSON.parse(t.split_between) : [];
             const myShare = splitBetween.length > 0 ? parseFloat(t.amount) / splitBetween.length : 0;
             monthlyData[monthKey].total += myShare;
-            monthlyData[monthKey].transactions.push({...t, myShare});
+            monthlyData[monthKey].transactions.push({ ...t, myShare });
         });
-        
+
         // Sort months in descending order (newest first)
         const sortedMonths = Object.keys(monthlyData).sort().reverse();
-        
+
         let html = `
             <div class="fade-in" style="padding-bottom: 80px;">
                 <!-- Header with Back Button -->
@@ -85,7 +86,7 @@ export async function renderExpenseAnalytics() {
             sortedMonths.forEach(monthKey => {
                 const month = monthlyData[monthKey];
                 const percentage = ((month.total / totalExpenses) * 100).toFixed(1);
-                
+
                 html += `
                     <div class="card" style="cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; margin-bottom: 20px; padding: 20px;" 
                          onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" 
@@ -111,19 +112,19 @@ export async function renderExpenseAnalytics() {
                         <div id="month-${monthKey}" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--bg-tertiary);">
                             <h4 style="font-size: 0.95rem; color: var(--text-secondary); margin: 0 0 16px 0; font-weight: 600;">Transactions:</h4>
                 `;
-                
+
                 // Sort transactions by date (newest first)
                 month.transactions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-                
+
                 month.transactions.forEach(t => {
                     const date = new Date(t.created_at);
                     const formattedDate = date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
-                    
+
                     // Find who paid
                     const payer = members.find(m => m.id === t.user_id);
                     const payerName = payer ? payer.name : 'Unknown';
                     const isPaidByMe = t.user_id === currentUser.id;
-                    
+
                     html += `
                         <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; background: var(--bg-input); border-radius: var(--radius-md); margin-bottom: 10px;">
                             <div style="flex: 1;">
@@ -137,7 +138,7 @@ export async function renderExpenseAnalytics() {
                         </div>
                     `;
                 });
-                
+
                 html += `
                         </div>
                     </div>

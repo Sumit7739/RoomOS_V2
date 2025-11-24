@@ -20,27 +20,28 @@ export async function renderTransactions() {
         const members = membersRes.members;
 
         // Calculate total expenses for current month
-        const currentUser = getState().user;
+        const state = await getState();
+        const currentUser = state.user;
         const myTransactions = transactions.filter(t => t.user_id === currentUser.id);
-        
+
         // Get current month's transactions
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
         const currentMonthName = now.toLocaleDateString('en-US', { month: 'long', timeZone: 'Asia/Kolkata' });
-        
+
         const currentMonthTransactions = myTransactions.filter(t => {
             const transDate = new Date(t.created_at);
             return transDate.getMonth() === currentMonth && transDate.getFullYear() === currentYear;
         });
-        
+
         const totalExpenses = currentMonthTransactions.reduce((sum, t) => sum + parseFloat(t.amount), 0);
 
 
         // Calculate total debt and surplus first
         let totalDebt = 0;
         let totalSurplus = 0;
-        
+
         if (balances && balances.length > 0) {
             balances.forEach(balance => {
                 const amount = parseFloat(balance.balance);
@@ -168,12 +169,12 @@ export async function renderTransactions() {
                     const member = members.find(m => m.id === id);
                     return member ? member.name : 'Unknown';
                 }).join(', ');
-                
+
                 // Find the payer's name
                 const payer = members.find(m => m.id === t.user_id);
                 const payerName = payer ? payer.name : 'Unknown';
                 const isPaidByCurrentUser = t.user_id === currentUser.id;
-                
+
                 html += `
                     <div class="card transaction-item" 
                          data-id="${t.id}"
@@ -202,7 +203,7 @@ export async function renderTransactions() {
         }
 
         html += '</div></div>';
-        
+
         // Add custom delete confirmation modal
         html += `
             <div id="delete-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 9999; align-items: center; justify-content: center;">
@@ -225,7 +226,7 @@ export async function renderTransactions() {
                 </div>
             </div>
         `;
-        
+
         // Add expense detail modal
         html += `
             <div id="expense-detail-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 9999; align-items: center; justify-content: center;">
@@ -243,7 +244,7 @@ export async function renderTransactions() {
                 </div>
             </div>
         `;
-        
+
         // Add expense modal
         html += `
             <div id="add-expense-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 9999; align-items: center; justify-content: center; overflow-y: auto; padding: 20px;">
@@ -292,7 +293,7 @@ export async function renderTransactions() {
                 </div>
             </div>
         `;
-        
+
         container.innerHTML = html;
 
         // Handlers
@@ -470,9 +471,9 @@ export async function renderTransactions() {
                 const splitBetween = JSON.parse(item.getAttribute('data-split-between'));
                 const splitNames = item.getAttribute('data-split-names');
                 const date = new Date(item.getAttribute('data-date'));
-                const formattedDate = date.toLocaleDateString('en-US', { 
-                    day: 'numeric', 
-                    month: 'long', 
+                const formattedDate = date.toLocaleDateString('en-US', {
+                    day: 'numeric',
+                    month: 'long',
                     year: 'numeric',
                     hour: '2-digit',
                     minute: '2-digit',
@@ -554,7 +555,7 @@ export async function renderTransactions() {
                 try {
                     const token = localStorage.getItem('token');
                     const response = await apiCall('/transactions/recalculate', 'POST', null, token);
-                    
+
                     if (response.message) {
                         showToast(response.message + ` (${response.transactions_processed} transactions)`, 'success');
                         // Refresh the page

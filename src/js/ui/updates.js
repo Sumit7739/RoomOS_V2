@@ -227,9 +227,21 @@ function showUpdatePopup(updateInfo) {
         closeUpdatePopup();
     });
 
-    downloadBtn.addEventListener('click', () => {
-        // Open download URL in new tab
-        window.open(updateInfo.download_url, '_blank');
+    downloadBtn.addEventListener('click', async () => {
+        // Try to use Tauri opener plugin first (for mobile/desktop app)
+        if (window.__TAURI__) {
+            try {
+                const { open } = await import('@tauri-apps/plugin-opener');
+                await open(updateInfo.download_url);
+            } catch (e) {
+                console.error('Failed to open with Tauri:', e);
+                // Fallback to window.open
+                window.open(updateInfo.download_url, '_blank');
+            }
+        } else {
+            // Web browser fallback
+            window.open(updateInfo.download_url, '_blank');
+        }
         closeUpdatePopup();
     });
 

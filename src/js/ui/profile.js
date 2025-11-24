@@ -8,7 +8,7 @@ export async function renderProfile() {
 
   try {
     const token = localStorage.getItem('token');
-    const state = getState();
+    const state = await getState();
     const user = state.user;
 
     // Fetch schedule

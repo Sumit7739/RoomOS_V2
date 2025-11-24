@@ -1,6 +1,6 @@
 [package]
 name = "roomos"
-version = "2.4.0"
+version = "2.6.0"
 description = "A Tauri App"
 authors = ["Sumit Srivastava"]
 edition = "2021"
