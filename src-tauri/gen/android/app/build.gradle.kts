@@ -13,35 +13,17 @@ val tauriProperties = Properties().apply {
     }
 }
 
-val keystoreProperties = Properties().apply {
-    val keystorePropertiesFile = rootProject.file("key.properties")
-    if (keystorePropertiesFile.exists()) {
-        keystorePropertiesFile.inputStream().use { load(it) }
-    }
-}
-
-
 android {
     compileSdk = 36
-    namespace = "com.purrs.roomOS"
+    namespace = "com.homesyncos.roomos"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
-        applicationId = "com.purrs.roomOS"
+        applicationId = "com.homesyncos.roomos"
         minSdk = 24
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
     }
-    
-    signingConfigs {
-        create("release") {
-            keyAlias = keystoreProperties.getProperty("keyAlias")
-            keyPassword = keystoreProperties.getProperty("keyPassword")
-            storeFile = keystoreProperties.getProperty("storeFile")?.let { file(it) }
-            storePassword = keystoreProperties.getProperty("storePassword")
-        }
-    }
-    
     buildTypes {
         getByName("debug") {
             manifestPlaceholders["usesCleartextTraffic"] = "true"
@@ -55,7 +37,6 @@ android {
             }
         }
         getByName("release") {
-            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }

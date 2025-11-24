@@ -60,9 +60,11 @@ function showUpdatePopup(updateInfo) {
         <div style="
             background: var(--bg-card);
             border-radius: var(--radius-lg);
-            padding: var(--space-xl);
+            padding: var(--space-lg);
             max-width: 500px;
             width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
             animation: slideUp 0.3s ease;
         ">

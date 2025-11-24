@@ -1,4 +1,0 @@
-storePassword=roomos123
-keyPassword=roomos123
-keyAlias=roomos
-storeFile=../../../roomos-release-key.keystore

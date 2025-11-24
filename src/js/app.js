@@ -39,9 +39,9 @@ function toggleChat() {
 }
 
 // Router
-export function navigate(view) {
+export async function navigate(view) {
     const container = document.getElementById('view-container');
-    const state = getState();
+    const state = await getState();
     const bottomNav = document.querySelector('.bottom-nav');
 
     // Clear current view
@@ -82,11 +82,20 @@ export function navigate(view) {
     // Update header title based on view
     const headerTitle = document.querySelector('.app-header h1');
     if (headerTitle) {
-        if (view === 'chat') {
-            headerTitle.textContent = 'Chat';
-        } else {
-            headerTitle.textContent = 'RoomOS';
-        }
+        const viewTitles = {
+            dashboard: 'RoomOS',
+            roster: 'Weekly Plan',
+            transactions: 'Money',
+            crew: 'Crew',
+            rules: 'Rules',
+            profile: 'Profile',
+            'expense-analytics': 'Analytics',
+            chat: 'Chat',
+            login: 'RoomOS',
+            group_setup: 'Setup',
+            'forgot-password': 'Reset Password'
+        };
+        headerTitle.textContent = viewTitles[view] || 'RoomOS';
     }
 
     // Hide/Show bottom nav and chat button based on view
@@ -124,7 +133,7 @@ export function navigate(view) {
             renderLogin();
             break;
         case 'forgot-password':
-            renderForgotPassword();
+            // renderForgotPassword(); // Uncomment when implemented
             break;
         case 'group_setup':
             renderGroupSetup();
@@ -174,7 +183,7 @@ function toggleTheme() {
 }
 
 // Init
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // Nav Click Handlers
     document.querySelectorAll('.nav-item').forEach(item => {
         item.addEventListener('click', () => {
@@ -189,7 +198,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelector('#theme-toggle i').className = savedTheme === 'dark' ? 'ph ph-moon' : 'ph ph-sun';
     }
 
-    const state = getState();
+    const state = await getState();
 
     // Initial Route
     if (state.token) {
@@ -205,7 +214,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     navigate('dashboard');
                 }
             })
-            .catch(() => navigate('login')); // If the check fails, go to login
+            .catch((err) => {
+                console.warn('Initial token check failed:', err);
+                // If offline, allow access assuming token is valid
+                if (!navigator.onLine || err.message.includes('offline') || err.message.includes('NetworkError')) {
+                    console.log('Offline detected, proceeding to app...');
+                    const lastView = localStorage.getItem('last_view');
+                    if (lastView && lastView !== 'login' && lastView !== 'group_setup') {
+                        navigate(lastView);
+                    } else {
+                        navigate('dashboard');
+                    }
+                } else {
+                    navigate('login');
+                }
+            });
     } else {
         navigate('login');
     }

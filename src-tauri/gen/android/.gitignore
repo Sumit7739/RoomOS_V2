@@ -13,8 +13,7 @@ build
 .externalNativeBuild
 .cxx
 local.properties
-# key.properties
+key.properties
 
 /.tauri
 /tauri.settings.gradle
-/roomos-release.apk
