@@ -1,7 +1,7 @@
 {
   "name": "roomos",
   "private": true,
-  "version": "2.6.0",
+  "version": "3.1.5",
   "type": "module",
   "scripts": {
     "tauri": "tauri"

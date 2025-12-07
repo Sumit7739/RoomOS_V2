@@ -15,13 +15,18 @@ import { showToast } from './ui/toast.js';
 import { startUpdateChecker, checkForUpdates } from './ui/updates.js';
 import './sync.js'; // Start sync listener
 
+// Navigation history stack for back button support
+let navigationStack = [];
+let isNavigatingBack = false;
+
 // Expose app to window for global access (e.g. onclick in HTML)
 window.app = {
     navigate: navigate,
     toggleTheme: toggleTheme,
     showToast: showToast,
     toggleChat: toggleChat,
-    checkForUpdates: checkForUpdates // For manual testing
+    checkForUpdates: checkForUpdates, // For manual testing
+    goBack: goBack // For manual back navigation
 };
 
 // Toggle Chat Function
@@ -38,10 +43,26 @@ function toggleChat() {
     }
 }
 
+// Go Back Function - Navigate to previous view
+function goBack() {
+    if (navigationStack.length > 1) {
+        // Remove current view
+        navigationStack.pop();
+        // Get previous view
+        const previousView = navigationStack[navigationStack.length - 1];
+        isNavigatingBack = true;
+        history.back();
+        // The popstate handler will take care of navigation
+    } else {
+        // If only one item in stack, go to dashboard
+        navigate('dashboard');
+    }
+}
+
 // Router
-export async function navigate(view) {
+export function navigate(view, pushToHistory = true) {
     const container = document.getElementById('view-container');
-    const state = await getState();
+    const state = getState();
     const bottomNav = document.querySelector('.bottom-nav');
 
     // Clear current view
@@ -69,6 +90,22 @@ export async function navigate(view) {
         return;
     }
 
+    // Manage navigation stack and browser history
+    const nonHistoryViews = ['login', 'group_setup', 'forgot-password'];
+    if (!nonHistoryViews.includes(view)) {
+        // Only push to stack if different from current top
+        const currentTop = navigationStack[navigationStack.length - 1];
+        if (currentTop !== view) {
+            navigationStack.push(view);
+            
+            // Push to browser history for back button support
+            if (pushToHistory && !isNavigatingBack) {
+                history.pushState({ view: view }, '', `#${view}`);
+            }
+        }
+    }
+    isNavigatingBack = false;
+
     // Save current view
     if (view !== 'login' && view !== 'group_setup') {
         // Store previous view before entering chat
@@ -95,7 +132,24 @@ export async function navigate(view) {
             group_setup: 'Setup',
             'forgot-password': 'Reset Password'
         };
-        headerTitle.textContent = viewTitles[view] || 'RoomOS';
+        
+        // Define which views need a back button and where they go back to
+        const backButtonViews = {
+            'expense-analytics': 'transactions'
+        };
+        
+        // Check if this view needs a back button
+        if (backButtonViews[view]) {
+            const backTarget = backButtonViews[view];
+            headerTitle.innerHTML = `
+                <span onclick="app.navigate('${backTarget}')" style="cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+                    <i class="ph ph-arrow-left" style="font-size: 1.1rem;"></i>
+                    ${viewTitles[view] || 'RoomOS'}
+                </span>
+            `;
+        } else {
+            headerTitle.textContent = viewTitles[view] || 'RoomOS';
+        }
     }
 
     // Hide/Show bottom nav and chat button based on view
@@ -182,8 +236,53 @@ function toggleTheme() {
     }
 }
 
+// Safe Area Insets Handler for Mobile (Android/iOS)
+function initSafeAreas() {
+    // Function to apply safe area insets
+    function applySafeAreas() {
+        const root = document.documentElement;
+        
+        // Get computed safe area values
+        const safeAreaTop = getComputedStyle(root).getPropertyValue('--safe-area-top') || '0px';
+        const safeAreaBottom = getComputedStyle(root).getPropertyValue('--safe-area-bottom') || '0px';
+        
+        console.log('Safe Area Top:', safeAreaTop);
+        console.log('Safe Area Bottom:', safeAreaBottom);
+        
+        // For Android, if safe areas are not detected, use fallback values
+        const isAndroid = /android/i.test(navigator.userAgent);
+        const isTauri = window.__TAURI__ !== undefined;
+        
+        if (isAndroid && isTauri) {
+            // Android typically has status bar (24-48px) and nav bar (48-96px)
+            // We'll use a more aggressive approach
+            const statusBarHeight = safeAreaTop === '0px' ? '24px' : safeAreaTop;
+            const navBarHeight = safeAreaBottom === '0px' ? '48px' : safeAreaBottom;
+            
+            root.style.setProperty('--safe-area-top', statusBarHeight);
+            root.style.setProperty('--safe-area-bottom', navBarHeight);
+            
+            console.log('Applied Android fallback - Top:', statusBarHeight, 'Bottom:', navBarHeight);
+        }
+    }
+    
+    // Apply on load
+    applySafeAreas();
+    
+    // Reapply on resize/orientation change
+    window.addEventListener('resize', applySafeAreas);
+    window.addEventListener('orientationchange', applySafeAreas);
+}
+
+// Initialize safe areas as early as possible
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSafeAreas);
+} else {
+    initSafeAreas();
+}
+
 // Init
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
     // Nav Click Handlers
     document.querySelectorAll('.nav-item').forEach(item => {
         item.addEventListener('click', () => {
@@ -198,7 +297,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.querySelector('#theme-toggle i').className = savedTheme === 'dark' ? 'ph ph-moon' : 'ph ph-sun';
     }
 
-    const state = await getState();
+    const state = getState();
 
     // Initial Route
     if (state.token) {
@@ -214,23 +313,51 @@ document.addEventListener('DOMContentLoaded', async () => {
                     navigate('dashboard');
                 }
             })
-            .catch((err) => {
-                console.warn('Initial token check failed:', err);
-                // If offline, allow access assuming token is valid
-                if (!navigator.onLine || err.message.includes('offline') || err.message.includes('NetworkError')) {
-                    console.log('Offline detected, proceeding to app...');
-                    const lastView = localStorage.getItem('last_view');
-                    if (lastView && lastView !== 'login' && lastView !== 'group_setup') {
-                        navigate(lastView);
-                    } else {
-                        navigate('dashboard');
-                    }
-                } else {
-                    navigate('login');
-                }
-            });
+            .catch(() => navigate('login')); // If the check fails, go to login
     } else {
         navigate('login');
+    }
+
+    // Handle browser/mobile back button
+    window.addEventListener('popstate', (event) => {
+        if (event.state && event.state.view) {
+            // Navigate to the view from history without pushing new state
+            isNavigatingBack = true;
+            navigate(event.state.view, false);
+            
+            // Update navigation stack
+            if (navigationStack.length > 1) {
+                navigationStack.pop();
+            }
+        } else {
+            // If no state, check URL hash or go to dashboard
+            const hash = window.location.hash.replace('#', '');
+            if (hash && hash !== 'login' && hash !== 'group_setup') {
+                isNavigatingBack = true;
+                navigate(hash, false);
+            } else if (navigationStack.length > 1) {
+                // Navigate to previous in our stack
+                navigationStack.pop();
+                const previousView = navigationStack[navigationStack.length - 1];
+                if (previousView) {
+                    isNavigatingBack = true;
+                    navigate(previousView, false);
+                }
+            } else {
+                // Prevent exit - push dashboard back to history
+                const currentView = localStorage.getItem('last_view') || 'dashboard';
+                if (currentView !== 'login' && currentView !== 'group_setup') {
+                    history.pushState({ view: currentView }, '', `#${currentView}`);
+                }
+            }
+        }
+    });
+
+    // Set initial history state
+    const initialView = localStorage.getItem('last_view') || 'dashboard';
+    if (initialView !== 'login' && initialView !== 'group_setup') {
+        history.replaceState({ view: initialView }, '', `#${initialView}`);
+        navigationStack.push(initialView);
     }
 
     // Register Service Worker
@@ -260,4 +387,61 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (state.token) {
         startUpdateChecker();
     }
+
+    // Scroll-based header and dock hide/show
+    let lastScrollY = 0;
+    let ticking = false;
+    const scrollThreshold = 5; // Minimum scroll amount to trigger hide/show
+    
+    const viewContainer = document.getElementById('view-container');
+    const header = document.querySelector('.app-header');
+    const bottomNav = document.querySelector('.bottom-nav');
+    
+    function getScrollTop() {
+        // Try viewContainer first, then fall back to document/window scroll
+        if (viewContainer && viewContainer.scrollTop > 0) {
+            return viewContainer.scrollTop;
+        }
+        return window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    }
+    
+    function handleScroll() {
+        const currentScrollY = getScrollTop();
+        const scrollDelta = currentScrollY - lastScrollY;
+        
+        // Only trigger if scroll amount exceeds threshold
+        if (Math.abs(scrollDelta) > scrollThreshold) {
+            if (scrollDelta > 0 && currentScrollY > 50) {
+                // Scrolling down (content moving up) - HIDE dock only (header stays fixed)
+                if (bottomNav && bottomNav.style.display !== 'none') {
+                    bottomNav.classList.add('dock-hidden');
+                }
+            } else if (scrollDelta < 0) {
+                // Scrolling up (content moving down) - SHOW dock
+                if (bottomNav) bottomNav.classList.remove('dock-hidden');
+            }
+            lastScrollY = currentScrollY;
+        }
+        
+        // Always show dock when at top
+        if (currentScrollY <= 10) {
+            if (bottomNav) bottomNav.classList.remove('dock-hidden');
+            lastScrollY = 0;
+        }
+        
+        ticking = false;
+    }
+    
+    function onScroll() {
+        if (!ticking) {
+            requestAnimationFrame(handleScroll);
+            ticking = true;
+        }
+    }
+    
+    // Listen on both viewContainer and window for maximum compatibility
+    if (viewContainer) {
+        viewContainer.addEventListener('scroll', onScroll, { passive: true });
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
 });

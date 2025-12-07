@@ -22,3 +22,22 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Android Build Outputs
+*.apk
+*.aab
+*.idsig
+
+# Keystore files (IMPORTANT: Never commit these!)
+*.keystore
+*.jks
+key.properties
+
+# Build summaries and temporary files
+BUILD_SUMMARY*.md
+/tmp/
+*.tmp
+
+# OS specific
+.DS_Store
+Thumbs.db

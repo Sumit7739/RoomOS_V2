@@ -1,14 +1,15 @@
 import { apiCall } from '../api.js';
 import { showToast } from './toast.js';
 import { getState } from '../state.js';
+import { profileSkeleton } from './skeleton.js';
 
 export async function renderProfile() {
   const container = document.getElementById('view-container');
-  container.innerHTML = '<div class="flex-center p-4"><div class="loader">Loading...</div></div>';
+  container.innerHTML = profileSkeleton();
 
   try {
     const token = localStorage.getItem('token');
-    const state = await getState();
+    const state = getState();
     const user = state.user;
 
     // Fetch schedule
@@ -46,12 +47,31 @@ export async function renderProfile() {
         <div class="card">
           <h2>Account Information</h2>
           <div style="display: flex; align-items: center; gap: var(--space-lg); margin-bottom: var(--space-lg);">
-            <div style="width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; background: var(--accent-gradient); border-radius: var(--radius-lg); font-size: 2rem; font-weight: 800; color: white;">
-              ${user.name.charAt(0).toUpperCase()}
+            <!-- Profile Picture with Upload -->
+            <div style="position: relative;">
+              <div id="profile-avatar" style="width: 72px; height: 72px; display: flex; align-items: center; justify-content: center; background: var(--accent-gradient); border-radius: 50%; font-size: 2rem; font-weight: 800; color: white; cursor: pointer; overflow: hidden; border: 3px solid var(--bg-tertiary); transition: all 0.2s;" onclick="document.getElementById('profile-pic-input').click()">
+                ${localStorage.getItem('profile_picture') 
+                  ? `<img src="${localStorage.getItem('profile_picture')}" style="width: 100%; height: 100%; object-fit: cover;" alt="Profile">`
+                  : user.name.charAt(0).toUpperCase()
+                }
+              </div>
+              <div style="position: absolute; bottom: -2px; right: -2px; width: 26px; height: 26px; background: var(--accent-primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 2px solid var(--bg-card); box-shadow: 0 2px 8px rgba(0,0,0,0.3);" onclick="document.getElementById('profile-pic-input').click()">
+                <i class="ph ph-camera" style="color: white; font-size: 0.8rem;"></i>
+              </div>
+              <input type="file" id="profile-pic-input" accept="image/*" style="display: none;">
             </div>
             <div style="flex: 1;">
               <h3 style="margin: 0 0 4px 0; font-size: 1.25rem;">${user.name}</h3>
               <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">${user.email}</p>
+              ${localStorage.getItem('profile_picture') ? `
+                <button id="remove-profile-pic" style="margin-top: 8px; background: none; border: none; color: var(--danger); font-size: 0.75rem; cursor: pointer; padding: 0; display: flex; align-items: center; gap: 4px;">
+                  <i class="ph ph-trash"></i> Remove photo
+                </button>
+              ` : `
+                <button style="margin-top: 8px; background: none; border: none; color: var(--accent-primary); font-size: 0.75rem; cursor: pointer; padding: 0; display: flex; align-items: center; gap: 4px;" onclick="document.getElementById('profile-pic-input').click()">
+                  <i class="ph ph-plus"></i> Add photo
+                </button>
+              `}
             </div>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md);">
@@ -71,7 +91,7 @@ export async function renderProfile() {
         ${user.role === 'admin' && pendingRequests.length > 0 ? renderPendingRequests(pendingRequests) : ''}
 
         <!-- Weekly Schedule Card -->
-        <div class="card card-collapsible" style="padding: 16px;">
+        <div class="card card-collapsible">
           <details>
             <summary class="details-summary-profile">
               <h2>Weekly Class Schedule</h2>
@@ -155,6 +175,76 @@ export async function renderProfile() {
     document.getElementById('logout-btn')?.addEventListener('click', logout);
     document.getElementById('reset-password-btn')?.addEventListener('click', handlePasswordReset);
 
+    // Profile Picture Upload Handler
+    const profilePicInput = document.getElementById('profile-pic-input');
+    if (profilePicInput) {
+      profilePicInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+          showToast('Please select an image file', 'error');
+          return;
+        }
+        
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          showToast('Image must be less than 5MB', 'error');
+          return;
+        }
+        
+        try {
+          // Compress and resize image
+          const compressedImage = await compressImage(file, 200, 0.7);
+          
+          // Save to localStorage for offline access
+          localStorage.setItem('profile_picture', compressedImage);
+          
+          // Update avatar immediately
+          const avatar = document.getElementById('profile-avatar');
+          if (avatar) {
+            avatar.innerHTML = `<img src="${compressedImage}" style="width: 100%; height: 100%; object-fit: cover;" alt="Profile">`;
+          }
+          
+          // Upload to server
+          const token = localStorage.getItem('token');
+          try {
+            await apiCall('/auth/upload-profile-picture', 'POST', { profile_picture: compressedImage }, token);
+            showToast('Profile picture saved!', 'success');
+          } catch (serverErr) {
+            showToast('Picture saved locally (server sync failed)', 'warning');
+            console.error('Server upload failed:', serverErr);
+          }
+          
+          // Refresh to update remove button
+          setTimeout(() => renderProfile(), 500);
+        } catch (err) {
+          showToast('Failed to process image', 'error');
+          console.error(err);
+        }
+      });
+    }
+    
+    // Remove Profile Picture Handler
+    const removeProfilePicBtn = document.getElementById('remove-profile-pic');
+    if (removeProfilePicBtn) {
+      removeProfilePicBtn.addEventListener('click', async () => {
+        localStorage.removeItem('profile_picture');
+        
+        // Remove from server too
+        const token = localStorage.getItem('token');
+        try {
+          await apiCall('/auth/upload-profile-picture', 'POST', { profile_picture: null }, token);
+        } catch (e) {
+          console.error('Server remove failed:', e);
+        }
+        
+        showToast('Profile picture removed', 'info');
+        renderProfile(); // Refresh to show initial
+      });
+    }
+
     // Off-day checkboxes
     document.querySelectorAll('.off-checkbox').forEach(checkbox => {
       checkbox.addEventListener('change', (e) => {
@@ -211,7 +301,7 @@ export async function renderProfile() {
 
 
   } catch (error) {
-    container.innerHTML = `
+            container.innerHTML = `
                 <div class="card" style="border-left: 4px solid var(--danger); animation: fadeIn 0.3s ease-out;">
                     <div style="display: flex; align-items: center; gap: 12px;">
                         <i class="ph ph-warning-circle" style="font-size: 2rem; color: var(--danger);"></i>
@@ -221,8 +311,7 @@ export async function renderProfile() {
                         </div>
                     </div>
                 </div>
-            `;
-  }
+            `;  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -236,7 +325,7 @@ function renderScheduleForm(schedule) {
     const isOff = !!daySchedule.off;
 
     html += `
-      <div style="margin-bottom: var(--space-md); padding: 12px; background: var(--bg-elevated); border-radius: var(--radius-md);">
+      <div style="margin-bottom: var(--space-md); padding: var(--space-md); background: var(--bg-elevated); border-radius: var(--radius-md);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-sm);">
           <div style="font-weight: 600; color: var(--text-primary);">${day}</div>
           <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
@@ -244,7 +333,7 @@ function renderScheduleForm(schedule) {
             <span style="font-size: 0.85rem; color: var(--text-secondary);">Off Day</span>
           </label>
         </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm);">
           <div>
             <label style="display: block; font-size: 0.75rem; color: var(--text-tertiary); margin-bottom: 4px;">Leave at</label>
             <input type="time" class="input-field time-input schedule-input" data-day="${day}" data-type="start"
@@ -407,4 +496,50 @@ async function handlePasswordReset() {
     document.getElementById('new-password').value = '';
     document.getElementById('confirm-password').value = '';
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Image Compression Helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+function compressImage(file, maxSize = 200, quality = 0.7) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        // Calculate new dimensions
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > height) {
+          if (width > maxSize) {
+            height = Math.round((height * maxSize) / width);
+            width = maxSize;
+          }
+        } else {
+          if (height > maxSize) {
+            width = Math.round((width * maxSize) / height);
+            height = maxSize;
+          }
+        }
+        
+        // Create canvas and draw resized image
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Convert to base64 JPEG
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl);
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }

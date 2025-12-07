@@ -60,11 +60,9 @@ function showUpdatePopup(updateInfo) {
         <div style="
             background: var(--bg-card);
             border-radius: var(--radius-lg);
-            padding: var(--space-lg);
+            padding: var(--space-xl);
             max-width: 500px;
             width: 90%;
-            max-height: 90vh;
-            overflow-y: auto;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
             animation: slideUp 0.3s ease;
         ">
@@ -227,21 +225,9 @@ function showUpdatePopup(updateInfo) {
         closeUpdatePopup();
     });
 
-    downloadBtn.addEventListener('click', async () => {
-        // Try to use Tauri opener plugin first (for mobile/desktop app)
-        if (window.__TAURI__) {
-            try {
-                const { open } = await import('@tauri-apps/plugin-opener');
-                await open(updateInfo.download_url);
-            } catch (e) {
-                console.error('Failed to open with Tauri:', e);
-                // Fallback to window.open
-                window.open(updateInfo.download_url, '_blank');
-            }
-        } else {
-            // Web browser fallback
-            window.open(updateInfo.download_url, '_blank');
-        }
+    downloadBtn.addEventListener('click', () => {
+        // Open download URL in new tab
+        window.open(updateInfo.download_url, '_blank');
         closeUpdatePopup();
     });
 
